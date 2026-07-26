@@ -1,0 +1,11 @@
+*
+!.gitignore
+
+!.github/
+!.github/workflows/
+!.github/workflows/deploy-pages.yml
+
+!web/
+!web/manifest.webmanifest
+!web/*.js
+!web/*.mjs

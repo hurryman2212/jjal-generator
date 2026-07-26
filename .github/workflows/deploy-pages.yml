@@ -1,0 +1,86 @@
+name: Deploy latest upstream to Pages
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      changed: ${{ steps.upstream.outputs.changed }}
+      sha: ${{ steps.upstream.outputs.sha }}
+
+    steps:
+      - name: Checkout web compatibility layer
+        uses: actions/checkout@v6
+        with:
+          path: wrapper
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Check upstream revision
+        id: upstream
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          UPSTREAM_REPOSITORY: 4katpapa/jjal-generator
+          UPSTREAM_REF: main
+          UPSTREAM_VERSION_URL: https://hurryman2212.github.io/jjal-generator/upstream-version.txt
+        run: node wrapper/web/check-update.mjs
+
+      - name: Checkout upstream revision
+        if: steps.upstream.outputs.changed == 'true'
+        uses: actions/checkout@v6
+        with:
+          repository: 4katpapa/jjal-generator
+          ref: ${{ steps.upstream.outputs.sha }}
+          path: upstream
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Build browser version
+        if: steps.upstream.outputs.changed == 'true'
+        run: node wrapper/web/build.mjs upstream _site
+
+      - name: Verify browser version
+        if: steps.upstream.outputs.changed == 'true'
+        run: node wrapper/web/verify.mjs upstream _site
+
+      - name: Configure Pages
+        if: steps.upstream.outputs.changed == 'true'
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        if: steps.upstream.outputs.changed == 'true'
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+
+  deploy:
+    if: needs.build.outputs.changed == 'true'
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy Pages artifact
+        id: deployment
+        uses: actions/deploy-pages@v4
